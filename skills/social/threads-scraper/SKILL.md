@@ -12,8 +12,11 @@ metadata:
     tags: [Social, Threads, Scraper, API]
 required_environment_variables:
   - name: SCRAPECREATORS_API_KEY
-    prompt: scrapecreators.com API key
+    prompt: scrapecreators.com primary API key
     required_for: Threads search endpoint
+  - name: SCRAPECREATORS_API_KEY_2
+    prompt: scrapecreators.com secondary API key (optional — fallback rotation)
+    required_for: Auto-rotated on 401/403/429
 ---
 
 # Threads Scraper
@@ -71,8 +74,8 @@ Final artifact: `<run>/deduped.json` — ready for the scorer.
 
 ## Pitfalls
 
-- **API key missing**: scrape.py exits 1 with "FATAL: SCRAPECREATORS_API_KEY is not set".
-  Verify the env var is set before invoking.
+- **API key missing**: scrape.py exits 1 with "FATAL: neither SCRAPECREATORS_API_KEY nor SCRAPECREATORS_API_KEY_2 is set". Verify at least one env var is set before invoking.
+- **Multi-key rotation**: If `SCRAPECREATORS_API_KEY_2` is also set, the script auto-rotates to it on 401/403/429 responses from the primary key. Both keys must be valid.
 - **Cache stampede**: If multiple keywords produce identical cache keys (same query+date),
   the second invocation copies from cache instantly — no duplicate API calls.
 - **Empty raw directory**: If all keywords fail their API calls, dedup.py warns and

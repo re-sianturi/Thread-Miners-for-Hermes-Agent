@@ -3,9 +3,10 @@
 Usage: scrape.py --query Q --start YYYY-MM-DD --end YYYY-MM-DD --run-dir DIR
 
 Calls scrapecreators.com /v1/threads/search for one keyword.
+Supports multiple API keys — auto-rotates on 429/401/403.
 Handles retries with exponential backoff, response caching by query hash.
 
-Requirements: pip install PyYAML  (for YAML I/O)
+Requirements: pip install PyYAML
 """
 
 import argparse, hashlib, json, os, sys, time, urllib.parse, urllib.request
@@ -26,6 +27,18 @@ def query_slug(query):
     return safe[:60]
 
 
+def get_api_keys():
+    """Collect all configured API keys, primary first, then fallbacks."""
+    primary = os.environ.get("SCRAPECREATORS_API_KEY", "").strip()
+    secondary = os.environ.get("SCRAPECREATORS_API_KEY_2", "").strip()
+    keys = []
+    if primary:
+        keys.append(primary)
+    if secondary and secondary != primary:
+        keys.append(secondary)
+    return keys
+
+
 def main():
     parser = argparse.ArgumentParser(description="Scrape Threads for one keyword")
     parser.add_argument("--query", required=True)
@@ -34,9 +47,9 @@ def main():
     parser.add_argument("--run-dir", required=True)
     args = parser.parse_args()
 
-    api_key = os.environ.get("SCRAPECREATORS_API_KEY")
-    if not api_key:
-        print("FATAL: SCRAPECREATORS_API_KEY is not set", file=sys.stderr)
+    api_keys = get_api_keys()
+    if not api_keys:
+        print("FATAL: neither SCRAPECREATORS_API_KEY nor SCRAPECREATORS_API_KEY_2 is set", file=sys.stderr)
         sys.exit(1)
 
     run_dir = os.path.abspath(args.run_dir)
@@ -68,41 +81,49 @@ def main():
         "end_date": args.end,
     })
     url = f"{API_URL}?{params}"
-    req = urllib.request.Request(url, headers={"x-api-key": api_key})
 
+    # Try each key round-robin, with retries per key
     last_err = None
-    for attempt in range(MAX_RETRIES):
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                raw = resp.read()
-                data = json.loads(raw)
-        except urllib.error.HTTPError as e:
-            status = e.code
-            body = e.read().decode(errors="replace")
-            if status == 429 or status >= 500:
-                last_err = f"HTTP {status}: {body[:200]}"
+    for key_idx, api_key in enumerate(api_keys):
+        req = urllib.request.Request(url, headers={"x-api-key": api_key})
+        for attempt in range(MAX_RETRIES):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    raw = resp.read()
+                    data = json.loads(raw)
+            except urllib.error.HTTPError as e:
+                status = e.code
+                body = e.read().decode(errors="replace")
+                # Auth/rate-limit failures — try next key if available
+                if status in (401, 403, 429) and key_idx < len(api_keys) - 1:
+                    last_err = f"HTTP {status} key#{key_idx+1}: {body[:100]}"
+                    break  # break inner retry loop, try next key
+                if status == 429 or status >= 500:
+                    last_err = f"HTTP {status}: {body[:200]}"
+                    if attempt < MAX_RETRIES - 1:
+                        time.sleep(BACKOFF[attempt])
+                    continue
+                else:
+                    print(f"FATAL: HTTP {status} for query '{args.query}': {body[:300]}", file=sys.stderr)
+                    sys.exit(1)
+            except Exception as e:
+                last_err = str(e)
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(BACKOFF[attempt])
                 continue
             else:
-                print(f"FATAL: HTTP {status} for query '{args.query}': {body[:300]}", file=sys.stderr)
-                sys.exit(1)
-        except Exception as e:
-            last_err = str(e)
-            if attempt < MAX_RETRIES - 1:
-                time.sleep(BACKOFF[attempt])
-            continue
-        else:
-            # Success
-            with open(cache_path, "w") as f:
-                json.dump(data, f)
-            import shutil
-            shutil.copy2(cache_path, out_path)
-            posts = data.get("data", {}).get("items", data.get("items", []))
-            print(f"OK {args.query} {len(posts)}")
-            sys.exit(0)
-
-    print(f"FATAL: All {MAX_RETRIES} retries exhausted for '{args.query}': {last_err}", file=sys.stderr)
+                # Success
+                with open(cache_path, "w") as f:
+                    json.dump(data, f)
+                import shutil
+                shutil.copy2(cache_path, out_path)
+                posts = data.get("data", {}).get("items", data.get("items", []))
+                key_label = f"key#{key_idx+1}" if len(api_keys) > 1 else ""
+                print(f"OK {args.query} {len(posts)} {key_label}".strip())
+                sys.exit(0)
+        # If we broke out of retry loop to try next key, continue outer loop
+    # else:
+    print(f"FATAL: All {len(api_keys)} key(s) exhausted for '{args.query}': {last_err}", file=sys.stderr)
     sys.exit(1)
 
 
