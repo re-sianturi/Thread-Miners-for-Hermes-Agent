@@ -1,0 +1,56 @@
+# Single source of truth for topic classifications.
+# The classifier must pick label from this list, no inventions.
+# reel_ready=true means the category is suitable for reel content.
+
+categories:
+  - id: edu-framework
+    label: "Edukasi (Framework)"
+    reel_ready: true
+  - id: edu-story
+    label: "Edukasi (Story)"
+    reel_ready: true
+  - id: edu-niche
+    label: "Edukasi (Niche)"
+    reel_ready: true
+  - id: edu-news-ai
+    label: "Edukasi (Berita AI)"
+    reel_ready: true
+  - id: edu-news
+    label: "Edukasi (Berita)"
+    reel_ready: true
+  - id: tutorial-pemula
+    label: "Tutorial (Pemula)"
+    reel_ready: true
+  - id: diskusi-opini
+    label: "Diskusi (Opini)"
+    reel_ready: true
+  - id: networking
+    label: "Networking"
+    reel_ready: false
+  - id: hiring-b2b
+    label: "Hiring (B2B)"
+    reel_ready: false
+  - id: hiring-spesialis
+    label: "Hiring (Spesialis)"
+    reel_ready: false
+  - id: hiring-instan
+    label: "Hiring (Instan)"
+    reel_ready: false
+  - id: cari-mentor
+    label: "Cari Mentor/Course"
+    reel_ready: false
+  - id: kolaborasi-bisnis
+    label: "Kolaborasi Bisnis"
+    reel_ready: false
+  - id: kolaborasi-agensi
+    label: "Kolaborasi Agensi"
+    reel_ready: false
+  - id: promosi-langsung
+    label: "Promosi Langsung"
+    reel_ready: false
+  - id: opini-singkat
+    label: "Opini Singkat"
+    reel_ready: false
+  - id: lainnya
+    label: "Lainnya"
+    reel_ready: false
